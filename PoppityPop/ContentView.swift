@@ -27,7 +27,7 @@ struct ContentView: View {
                                     }
                                 ForEach(squares) { square in
                                     RoundedRectangle(cornerRadius: 12.0)
-                                        .glassEffect(.regular.interactive().tint(square.color), in: .rect(cornerRadius: 12.0))
+                                        .adaptiveGlass(.coloredInteractive(color: square.color), cornerRadius: 12.0)
                                         .frame(width: square.size, height: square.size)
                                         .position(square.position)
                                         .onTapGesture {

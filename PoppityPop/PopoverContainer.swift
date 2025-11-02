@@ -29,7 +29,7 @@ struct PopoverContainer<Content: View>: View {
             }
             .contentMargins(.vertical, 8.0)
             .frame(width: popoverWidth, height: popoverHeight)
-            .glassEffect(.regular, in: .rect(cornerRadius: 16.0))
+            .adaptiveGlass(.regular, cornerRadius: 16.0)
         }
         .scaleEffect(0.3 + (0.7 * animationProgress))
         .opacity(animationProgress)
