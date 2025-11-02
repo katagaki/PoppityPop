@@ -56,17 +56,19 @@ struct ContentView: View {
                             }
                     }
 
-                    PPPopover(selection: $selectedSquare, canvasSize: canvasSize) { square in
-                        VStack(alignment: .leading, spacing: 4.0) {
-                            if square.red.isEqual(to: 1.0) && square.green.isEqual(to: 1.0) && square.blue.isEqual(to: 1.0) {
-                                ForEach(0..<20, id: \.self) { _ in
-                                    Text("Special Test Point")
-                                        .bold()
+                    PPPopover(selection: $selectedSquare, canvasSize: canvasSize) { item in
+                        VStack(alignment: .leading, spacing: 12.0) {
+                            VStack(alignment: .leading, spacing: 4.0) {
+                                if item.red.isEqual(to: 1.0) && item.green.isEqual(to: 1.0) && item.blue.isEqual(to: 1.0) {
+                                    ForEach(0..<20, id: \.self) { _ in
+                                        Text("Special Test Point")
+                                            .bold()
+                                    }
+                                } else {
+                                    Text("Red: \(Int(item.red * 255))")
+                                    Text("Green: \(Int(item.green * 255))")
+                                    Text("Blue: \(Int(item.blue * 255))")
                                 }
-                            } else {
-                                Text("Red: \(Int(square.red * 255))")
-                                Text("Green: \(Int(square.green * 255))")
-                                Text("Blue: \(Int(square.blue * 255))")
                             }
                         }
                     }
@@ -129,20 +131,37 @@ struct PPPopover<Item: PopoverItem, Content: View>: View {
     let popoverHeight: CGFloat = 200.0
     let edgePadding: CGFloat = 18.0
 
-    @State private var animationProgress: CGFloat = 0
     @State private var dismissingItem: Item?
     @State private var currentItem: Item?
 
     var body: some View {
         ZStack {
             if let item = currentItem {
-                popoverContent(for: item, isDismissing: false)
-                    .id(item.id)
+                PopoverContainer(
+                    item: item,
+                    canvasSize: canvasSize,
+                    popoverWidth: popoverWidth,
+                    popoverHeight: popoverHeight,
+                    edgePadding: edgePadding,
+                    isDismissing: false
+                ) {
+                    content(item)
+                }
+                .id(item.id)
             }
 
             if let dismissing = dismissingItem {
-                popoverContent(for: dismissing, isDismissing: true)
-                    .id("!\(dismissing.id)")
+                PopoverContainer(
+                    item: dismissing,
+                    canvasSize: canvasSize,
+                    popoverWidth: popoverWidth,
+                    popoverHeight: popoverHeight,
+                    edgePadding: edgePadding,
+                    isDismissing: true
+                ) {
+                    content(dismissing)
+                }
+                .id("!\(dismissing.id)")
             }
         }
         .onChange(of: selection) { oldValue, newValue in
@@ -167,23 +186,6 @@ struct PPPopover<Item: PopoverItem, Content: View>: View {
         }
     }
 
-    private func popoverContent(for item: Item, isDismissing: Bool) -> some View {
-        PopoverContent(
-            item: item,
-            canvasSize: canvasSize,
-            popoverWidth: popoverWidth,
-            popoverHeight: popoverHeight,
-            edgePadding: edgePadding,
-            isDismissing: isDismissing,
-            content: content,
-            onDismiss: {
-                if !isDismissing {
-                    dismiss()
-                }
-            }
-        )
-    }
-
     private func dismiss() {
         if let current = currentItem {
             dismissingItem = current
@@ -197,35 +199,24 @@ struct PPPopover<Item: PopoverItem, Content: View>: View {
     }
 }
 
-struct PopoverContent<Item: PopoverItem, Content: View>: View {
+struct PopoverContainer<Item: PopoverItem, Content: View>: View {
     let item: Item
     let canvasSize: CGSize
     let popoverWidth: CGFloat
     let popoverHeight: CGFloat
     let edgePadding: CGFloat
     let isDismissing: Bool
-    let content: (Item) -> Content
-    let onDismiss: () -> Void
+    let content: () -> Content
 
     @State private var animationProgress: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .center) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 12.0) {
-                    HStack {
-                        Spacer()
-                        Button(action: onDismiss) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.primary.opacity(0.5))
-                                .font(.title)
-                        }
-                    }
-
-                    content(item)
-                }
-                .padding(.horizontal, 16.0)
-                .padding(.vertical, 8.0)
+                content()
+                    .padding(.horizontal, 16.0)
+                    .padding(.vertical, 8.0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .contentMargins(.vertical, 8.0)
             .frame(width: popoverWidth, height: popoverHeight)
