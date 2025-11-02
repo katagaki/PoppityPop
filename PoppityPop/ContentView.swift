@@ -1,3 +1,10 @@
+//
+//  PoppityPopApp.swift
+//  PoppityPop
+//
+//  Created by シン・ジャスティン on 2025/11/02.
+//
+
 import SwiftUI
 
 struct Square: Identifiable, Equatable {
