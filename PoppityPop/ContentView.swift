@@ -1,11 +1,6 @@
 import SwiftUI
 
-protocol PopoverItem: Identifiable, Equatable {
-    var position: CGPoint { get }
-    var size: CGFloat { get }
-}
-
-struct Square: Identifiable, Equatable, PopoverItem {
+struct Square: Identifiable, Equatable {
     let id = UUID()
     let color: Color
     let red: Double
@@ -29,9 +24,9 @@ struct Square: Identifiable, Equatable, PopoverItem {
 
 struct ContentView: View {
     let canvasSize: CGSize = .init(width: 1920, height: 1080)
-    @State private var squares: [Square] = []
-    @State private var selectedSquare: Square?
-    @State private var gradientColors: [Color] = []
+    @State var squares: [Square] = []
+    @State var selectedSquare: Square?
+    @State var gradientColors: [Color] = []
 
     var body: some View {
         GeometryReader { geometry in
@@ -56,7 +51,12 @@ struct ContentView: View {
                             }
                     }
 
-                    PPPopover(selection: $selectedSquare, canvasSize: canvasSize) { item in
+                    PPPopover(
+                        selection: $selectedSquare,
+                        canvasSize: canvasSize,
+                        itemPosition: { $0.position },
+                        itemSize: { $0.size }
+                    ) { item in
                         VStack(alignment: .leading, spacing: 12.0) {
                             VStack(alignment: .leading, spacing: 4.0) {
                                 if item.red.isEqual(to: 1.0) && item.green.isEqual(to: 1.0) && item.blue.isEqual(to: 1.0) {
@@ -122,23 +122,26 @@ struct ContentView: View {
     }
 }
 
-struct PPPopover<Item: PopoverItem, Content: View>: View {
+struct PPPopover<Item: Identifiable & Equatable, Content: View>: View {
     @Binding var selection: Item?
     let canvasSize: CGSize
+    let itemPosition: (Item) -> CGPoint
+    let itemSize: (Item) -> CGFloat
     let content: (Item) -> Content
 
     let popoverWidth: CGFloat = 260.0
     let popoverHeight: CGFloat = 200.0
     let edgePadding: CGFloat = 18.0
 
-    @State private var dismissingItem: Item?
-    @State private var currentItem: Item?
+    @State var dismissingItem: Item?
+    @State var currentItem: Item?
 
     var body: some View {
         ZStack {
             if let item = currentItem {
                 PopoverContainer(
-                    item: item,
+                    itemPosition: itemPosition(item),
+                    itemSize: itemSize(item),
                     canvasSize: canvasSize,
                     popoverWidth: popoverWidth,
                     popoverHeight: popoverHeight,
@@ -152,7 +155,8 @@ struct PPPopover<Item: PopoverItem, Content: View>: View {
 
             if let dismissing = dismissingItem {
                 PopoverContainer(
-                    item: dismissing,
+                    itemPosition: itemPosition(dismissing),
+                    itemSize: itemSize(dismissing),
                     canvasSize: canvasSize,
                     popoverWidth: popoverWidth,
                     popoverHeight: popoverHeight,
@@ -186,7 +190,7 @@ struct PPPopover<Item: PopoverItem, Content: View>: View {
         }
     }
 
-    private func dismiss() {
+    func dismiss() {
         if let current = currentItem {
             dismissingItem = current
             currentItem = nil
@@ -199,8 +203,9 @@ struct PPPopover<Item: PopoverItem, Content: View>: View {
     }
 }
 
-struct PopoverContainer<Item: PopoverItem, Content: View>: View {
-    let item: Item
+struct PopoverContainer<Content: View>: View {
+    let itemPosition: CGPoint
+    let itemSize: CGFloat
     let canvasSize: CGSize
     let popoverWidth: CGFloat
     let popoverHeight: CGFloat
@@ -208,7 +213,7 @@ struct PopoverContainer<Item: PopoverItem, Content: View>: View {
     let isDismissing: Bool
     let content: () -> Content
 
-    @State private var animationProgress: CGFloat = 0
+    @State var animationProgress: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .center) {
@@ -239,9 +244,9 @@ struct PopoverContainer<Item: PopoverItem, Content: View>: View {
         }
     }
 
-    private func animatedPosition() -> CGPoint {
+    func animatedPosition() -> CGPoint {
         let finalPosition = calculatePopoverPosition()
-        let startPosition = item.position
+        let startPosition = itemPosition
 
         return CGPoint(
             x: startPosition.x + (finalPosition.x - startPosition.x) * animationProgress,
@@ -249,16 +254,16 @@ struct PopoverContainer<Item: PopoverItem, Content: View>: View {
         )
     }
 
-    private func calculatePopoverPosition() -> CGPoint {
+    func calculatePopoverPosition() -> CGPoint {
         let gapFromSquare: CGFloat = 8
         let effectiveHeight = max(popoverHeight, 150)
-        let minOffsetX = (item.size / 2) + gapFromSquare + (popoverWidth / 2)
-        let minOffsetY = (item.size / 2) + gapFromSquare + (effectiveHeight / 2)
+        let minOffsetX = (itemSize / 2) + gapFromSquare + (popoverWidth / 2)
+        let minOffsetY = (itemSize / 2) + gapFromSquare + (effectiveHeight / 2)
 
-        let spaceRight = canvasSize.width - edgePadding - (item.position.x + minOffsetX + popoverWidth / 2)
-        let spaceLeft = (item.position.x - minOffsetX - popoverWidth / 2) - edgePadding
-        let spaceBottom = canvasSize.height - edgePadding - (item.position.y + minOffsetY + effectiveHeight / 2)
-        let spaceTop = (item.position.y - minOffsetY - effectiveHeight / 2) - edgePadding
+        let spaceRight = canvasSize.width - edgePadding - (itemPosition.x + minOffsetX + popoverWidth / 2)
+        let spaceLeft = (itemPosition.x - minOffsetX - popoverWidth / 2) - edgePadding
+        let spaceBottom = canvasSize.height - edgePadding - (itemPosition.y + minOffsetY + effectiveHeight / 2)
+        let spaceTop = (itemPosition.y - minOffsetY - effectiveHeight / 2) - edgePadding
 
         var x: CGFloat
         var y: CGFloat
@@ -268,18 +273,18 @@ struct PopoverContainer<Item: PopoverItem, Content: View>: View {
         let canFitBelow = spaceBottom >= 0
         let canFitAbove = spaceTop >= 0
 
-        let nearTopEdge = item.position.y < canvasSize.height * 0.3
-        let nearBottomEdge = item.position.y > canvasSize.height * 0.7
+        let nearTopEdge = itemPosition.y < canvasSize.height * 0.3
+        let nearBottomEdge = itemPosition.y > canvasSize.height * 0.7
 
         if nearTopEdge && canFitBelow {
-            x = item.position.x
-            y = item.position.y + minOffsetY
+            x = itemPosition.x
+            y = itemPosition.y + minOffsetY
         } else if nearBottomEdge && canFitAbove {
-            x = item.position.x
-            y = item.position.y - minOffsetY
+            x = itemPosition.x
+            y = itemPosition.y - minOffsetY
         } else if canFitRight {
-            x = item.position.x + minOffsetX
-            y = item.position.y
+            x = itemPosition.x + minOffsetX
+            y = itemPosition.y
 
             if y + effectiveHeight / 2 > canvasSize.height - edgePadding {
                 y = canvasSize.height - edgePadding - effectiveHeight / 2
@@ -287,8 +292,8 @@ struct PopoverContainer<Item: PopoverItem, Content: View>: View {
                 y = edgePadding + effectiveHeight / 2
             }
         } else if canFitLeft {
-            x = item.position.x - minOffsetX
-            y = item.position.y
+            x = itemPosition.x - minOffsetX
+            y = itemPosition.y
 
             if y + effectiveHeight / 2 > canvasSize.height - edgePadding {
                 y = canvasSize.height - edgePadding - effectiveHeight / 2
@@ -296,14 +301,14 @@ struct PopoverContainer<Item: PopoverItem, Content: View>: View {
                 y = edgePadding + effectiveHeight / 2
             }
         } else if canFitBelow {
-            x = item.position.x
-            y = item.position.y + minOffsetY
+            x = itemPosition.x
+            y = itemPosition.y + minOffsetY
         } else if canFitAbove {
-            x = item.position.x
-            y = item.position.y - minOffsetY
+            x = itemPosition.x
+            y = itemPosition.y - minOffsetY
         } else {
-            x = item.position.x + minOffsetX
-            y = item.position.y
+            x = itemPosition.x + minOffsetX
+            y = itemPosition.y
         }
 
         x = max(edgePadding + popoverWidth / 2, min(canvasSize.width - edgePadding - popoverWidth / 2, x))
