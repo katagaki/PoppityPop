@@ -1,6 +1,11 @@
 import SwiftUI
 
-struct Square: Identifiable, Equatable {
+protocol PopoverItem: Identifiable, Equatable {
+    var position: CGPoint { get }
+    var size: CGFloat { get }
+}
+
+struct Square: Identifiable, Equatable, PopoverItem {
     let id = UUID()
     let color: Color
     let red: Double
@@ -23,6 +28,7 @@ struct Square: Identifiable, Equatable {
 }
 
 struct ContentView: View {
+    let canvasSize: CGSize = .init(width: 1920, height: 1080)
     @State private var squares: [Square] = []
     @State private var selectedSquare: Square?
     @State private var gradientColors: [Color] = []
@@ -32,21 +38,14 @@ struct ContentView: View {
             ScrollView([.horizontal, .vertical], showsIndicators: true) {
                 ZStack(alignment: .topLeading) {
                     LinearGradient(
-                        gradient: Gradient(colors: gradientColors.isEmpty ? [Color.black] : gradientColors),
+                        gradient: Gradient(colors: gradientColors),
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                     .frame(width: 1920, height: 1080)
-
-                    if selectedSquare != nil {
-                        Color.clear
-                            .frame(width: 1920, height: 1080)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectedSquare = nil
-                            }
+                    .onTapGesture {
+                        selectedSquare = nil
                     }
-
                     ForEach(squares) { square in
                         RoundedRectangle(cornerRadius: 12.0)
                             .glassEffect(.regular.interactive().tint(square.color), in: .rect(cornerRadius: 12.0))
@@ -57,24 +56,35 @@ struct ContentView: View {
                             }
                     }
 
-                    PPPopover(selection: $selectedSquare, canvasSize: CGSize(width: 1920, height: 1080))
+                    PPPopover(selection: $selectedSquare, canvasSize: canvasSize) { square in
+                        VStack(alignment: .leading, spacing: 4.0) {
+                            if square.red.isEqual(to: 1.0) && square.green.isEqual(to: 1.0) && square.blue.isEqual(to: 1.0) {
+                                ForEach(0..<20, id: \.self) { _ in
+                                    Text("Special Test Point")
+                                        .bold()
+                                }
+                            } else {
+                                Text("Red: \(Int(square.red * 255))")
+                                Text("Green: \(Int(square.green * 255))")
+                                Text("Blue: \(Int(square.blue * 255))")
+                            }
+                        }
+                    }
                 }
                 .onAppear {
                     generateGradient()
-                    generateSquares(in: CGSize(width: 1920, height: 1080))
+                    generateSquares(in: canvasSize)
                 }
             }
-            .background(Color.black)
         }
         .ignoresSafeArea()
     }
 
-    private func generateSquares(in size: CGSize) {
-        let numberOfSquares = 40
+    func generateSquares(in size: CGSize) {
         let squareSize: CGFloat = 52
 
         var generatedSquares: [Square] = []
-        while generatedSquares.count < numberOfSquares {
+        while generatedSquares.count < 40 {
             let newPosition = CGPoint(
                 x: CGFloat.random(in: (squareSize / 2)...(size.width - squareSize / 2)),
                 y: CGFloat.random(in: (squareSize / 2)...(size.height - squareSize / 2))
@@ -99,9 +109,8 @@ struct ContentView: View {
         squares = generatedSquares
     }
 
-    private func generateGradient() {
-        let numberOfColors = 3
-        gradientColors = (0..<numberOfColors).map { _ in
+    func generateGradient() {
+        gradientColors = (0..<3).map { _ in
             Color(
                 red: Double.random(in: 0...1),
                 green: Double.random(in: 0...1),
@@ -111,95 +120,91 @@ struct ContentView: View {
     }
 }
 
-struct PPPopover: View {
-    @Binding var selection: Square?
+struct PPPopover<Item: PopoverItem, Content: View>: View {
+    @Binding var selection: Item?
     let canvasSize: CGSize
+    let content: (Item) -> Content
 
     let popoverWidth: CGFloat = 260.0
     let popoverHeight: CGFloat = 200.0
     let edgePadding: CGFloat = 18.0
 
     @State private var animationProgress: CGFloat = 0
-    @State private var dismissingSquare: Square?
-    @State private var currentSquare: Square?
+    @State private var dismissingItem: Item?
+    @State private var currentItem: Item?
 
     var body: some View {
         ZStack {
-            if let square = currentSquare {
-                popoverContent(for: square, isDismissing: false)
-                    .id(square.id)
+            if let item = currentItem {
+                popoverContent(for: item, isDismissing: false)
+                    .id(item.id)
             }
 
-            if let dismissing = dismissingSquare {
+            if let dismissing = dismissingItem {
                 popoverContent(for: dismissing, isDismissing: true)
-                    .id("dismissing-\(dismissing.id)")
+                    .id("!\(dismissing.id)")
             }
         }
         .onChange(of: selection) { oldValue, newValue in
-            handleSelectionChange(from: oldValue, to: newValue)
+            if oldValue != nil, newValue == nil {
+                dismiss()
+            } else if let oldValue, let newValue, oldValue.id != newValue.id {
+                dismissingItem = oldValue
+                currentItem = newValue
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    dismissingItem = nil
+                }
+            } else if let newValue {
+                currentItem = newValue
+            } else {
+                currentItem = nil
+            }
         }
         .onAppear {
             if let selected = selection {
-                currentSquare = selected
+                currentItem = selected
             }
         }
     }
 
-    private func popoverContent(for square: Square, isDismissing: Bool) -> some View {
+    private func popoverContent(for item: Item, isDismissing: Bool) -> some View {
         PopoverContent(
-            square: square,
+            item: item,
             canvasSize: canvasSize,
             popoverWidth: popoverWidth,
             popoverHeight: popoverHeight,
             edgePadding: edgePadding,
             isDismissing: isDismissing,
+            content: content,
             onDismiss: {
                 if !isDismissing {
-                    dismissWithAnimation()
+                    dismiss()
                 }
             }
         )
     }
 
-    private func handleSelectionChange(from oldValue: Square?, to newValue: Square?) {
-        if let old = oldValue, newValue == nil {
-            return
-        }
-
-        if let old = oldValue, let new = newValue, old.id != new.id {
-            dismissingSquare = old
-            currentSquare = new
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                dismissingSquare = nil
-            }
-        } else if let new = newValue {
-            currentSquare = new
-        } else {
-            currentSquare = nil
-        }
-    }
-
-    private func dismissWithAnimation() {
-        if let current = currentSquare {
-            dismissingSquare = current
-            currentSquare = nil
+    private func dismiss() {
+        if let current = currentItem {
+            dismissingItem = current
+            currentItem = nil
             selection = nil
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                dismissingSquare = nil
+                dismissingItem = nil
             }
         }
     }
 }
 
-struct PopoverContent: View {
-    let square: Square
+struct PopoverContent<Item: PopoverItem, Content: View>: View {
+    let item: Item
     let canvasSize: CGSize
     let popoverWidth: CGFloat
     let popoverHeight: CGFloat
     let edgePadding: CGFloat
     let isDismissing: Bool
+    let content: (Item) -> Content
     let onDismiss: () -> Void
 
     @State private var animationProgress: CGFloat = 0
@@ -216,28 +221,8 @@ struct PopoverContent: View {
                                 .font(.title)
                         }
                     }
-                    VStack(alignment: .leading, spacing: 4.0) {
-                        if square.red.isEqual(to: 1.0) && square.green.isEqual(to: 1.0) && square.blue.isEqual(to: 1.0) {
-                            Text("Special Test Point")
-                                .bold()
-                            Text("Special Test Point")
-                                .bold()
-                            Text("Special Test Point")
-                                .bold()
-                            Text("Special Test Point")
-                                .bold()
-                            Text("Special Test Point")
-                                .bold()
-                            Text("Special Test Point")
-                                .bold()
-                            Text("Special Test Point")
-                                .bold()
-                        } else {
-                            Text("Red: \(Int(square.red * 255))")
-                            Text("Green: \(Int(square.green * 255))")
-                            Text("Blue: \(Int(square.blue * 255))")
-                        }
-                    }
+
+                    content(item)
                 }
                 .padding(.horizontal, 16.0)
                 .padding(.vertical, 8.0)
@@ -265,7 +250,7 @@ struct PopoverContent: View {
 
     private func animatedPosition() -> CGPoint {
         let finalPosition = calculatePopoverPosition()
-        let startPosition = square.position
+        let startPosition = item.position
 
         return CGPoint(
             x: startPosition.x + (finalPosition.x - startPosition.x) * animationProgress,
@@ -276,13 +261,13 @@ struct PopoverContent: View {
     private func calculatePopoverPosition() -> CGPoint {
         let gapFromSquare: CGFloat = 8
         let effectiveHeight = max(popoverHeight, 150)
-        let minOffsetX = (square.size / 2) + gapFromSquare + (popoverWidth / 2)
-        let minOffsetY = (square.size / 2) + gapFromSquare + (effectiveHeight / 2)
+        let minOffsetX = (item.size / 2) + gapFromSquare + (popoverWidth / 2)
+        let minOffsetY = (item.size / 2) + gapFromSquare + (effectiveHeight / 2)
 
-        let spaceRight = canvasSize.width - edgePadding - (square.position.x + minOffsetX + popoverWidth / 2)
-        let spaceLeft = (square.position.x - minOffsetX - popoverWidth / 2) - edgePadding
-        let spaceBottom = canvasSize.height - edgePadding - (square.position.y + minOffsetY + effectiveHeight / 2)
-        let spaceTop = (square.position.y - minOffsetY - effectiveHeight / 2) - edgePadding
+        let spaceRight = canvasSize.width - edgePadding - (item.position.x + minOffsetX + popoverWidth / 2)
+        let spaceLeft = (item.position.x - minOffsetX - popoverWidth / 2) - edgePadding
+        let spaceBottom = canvasSize.height - edgePadding - (item.position.y + minOffsetY + effectiveHeight / 2)
+        let spaceTop = (item.position.y - minOffsetY - effectiveHeight / 2) - edgePadding
 
         var x: CGFloat
         var y: CGFloat
@@ -292,18 +277,18 @@ struct PopoverContent: View {
         let canFitBelow = spaceBottom >= 0
         let canFitAbove = spaceTop >= 0
 
-        let nearTopEdge = square.position.y < canvasSize.height * 0.3
-        let nearBottomEdge = square.position.y > canvasSize.height * 0.7
+        let nearTopEdge = item.position.y < canvasSize.height * 0.3
+        let nearBottomEdge = item.position.y > canvasSize.height * 0.7
 
         if nearTopEdge && canFitBelow {
-            x = square.position.x
-            y = square.position.y + minOffsetY
+            x = item.position.x
+            y = item.position.y + minOffsetY
         } else if nearBottomEdge && canFitAbove {
-            x = square.position.x
-            y = square.position.y - minOffsetY
+            x = item.position.x
+            y = item.position.y - minOffsetY
         } else if canFitRight {
-            x = square.position.x + minOffsetX
-            y = square.position.y
+            x = item.position.x + minOffsetX
+            y = item.position.y
 
             if y + effectiveHeight / 2 > canvasSize.height - edgePadding {
                 y = canvasSize.height - edgePadding - effectiveHeight / 2
@@ -311,8 +296,8 @@ struct PopoverContent: View {
                 y = edgePadding + effectiveHeight / 2
             }
         } else if canFitLeft {
-            x = square.position.x - minOffsetX
-            y = square.position.y
+            x = item.position.x - minOffsetX
+            y = item.position.y
 
             if y + effectiveHeight / 2 > canvasSize.height - edgePadding {
                 y = canvasSize.height - edgePadding - effectiveHeight / 2
@@ -320,14 +305,14 @@ struct PopoverContent: View {
                 y = edgePadding + effectiveHeight / 2
             }
         } else if canFitBelow {
-            x = square.position.x
-            y = square.position.y + minOffsetY
+            x = item.position.x
+            y = item.position.y + minOffsetY
         } else if canFitAbove {
-            x = square.position.x
-            y = square.position.y - minOffsetY
+            x = item.position.x
+            y = item.position.y - minOffsetY
         } else {
-            x = square.position.x + minOffsetX
-            y = square.position.y
+            x = item.position.x + minOffsetX
+            y = item.position.y
         }
 
         x = max(edgePadding + popoverWidth / 2, min(canvasSize.width - edgePadding - popoverWidth / 2, x))
